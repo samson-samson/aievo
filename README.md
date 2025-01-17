@@ -39,68 +39,75 @@ The primary function of this module is to facilitate the construction of Agents.
 
 For example, to create a programmer Agent:
 ```go
-// 实例化基座模型
+// Instantiate the base model
 client, err := openai.New(
     openai.WithToken(os.Getenv("OPENAI_API_KEY")),
     openai.WithModel(os.Getenv("OPENAI_MODEL")),
     openai.WithBaseURL(os.Getenv("OPENAI_BASE_URL")))
 if err != nil {
     log.Fatal(err)
-}// 文件操作相关工具
+}
+
+// File operation related tools
 fileTools, _ := file.GetFileRelatedTools(workspace)
-// 命令执行
+
+// Command execution
 bashTool, _ := bash.New()
-// 构建工具集
+
+// Build the toolset
 engineerTools := make([]tool.Tool, 0)
 engineerTools = append(engineerTools, fileTools...)
 engineerTools = append(engineerTools, bashTool)
-// 回调处理器，主要用于分析Agent的执行过程
+
+// Callback handler, mainly used to analyze the execution process of the Agent
 callbackHandler := &CallbackHandler{}
-// 定义Env，用于和其他Agent进行交互以及记忆存储
+
+// Define Env for interacting with other Agents and memory storage
 env := environment.NewEnv()
-// 构建Agent
+
+// Build the Agent
 engineer, _ := agent.NewBaseAgent( 
-    // Agent的名称 
+    // Name of the Agent
     agent.WithName("engineer"),
-    // Agent的描述 
+    // Description of the Agent
     agent.WithDesc(EngineerDescription),
-    // Agent的Prompt（支持设置动态参数）
+    // Prompt for the Agent (supports dynamic parameters)
     agent.WithPrompt(EngineerPrompt),
-    // Agent的指令（支持设置动态参数）
+    // Instructions for the Agent (supports dynamic parameters)
     agent.WithInstruction(SingleAgentInstructions),
-    // Agent的动态参数
-	// 1. 当前工作流程
+    // Dynamic parameters for the Agent
+    // 1. Current workflow
     agent.WithVars("sop", Workflow),
-	// 2. 当前工作区
+    // 2. Current workspace
     agent.WithVars("workspace", workspace),
-    // Agent的工具集
+    // Toolset for the Agent
     agent.WithTools(engineerTools),
-    // Agent的基座模型
+    // Base model for the Agent
     agent.WithLLM(client),
-    // Agent的回调处理器
+    // Callback handler for the Agent
     agent.WithCallback(callbackHandler),
-	// Agent的环境
+    // Environment for the Agent
     aievo.WithEnvironment(env),
 )
 
-// 运行Agent
+// Run the Agent
 gen, _ := engineer.Run(
     context.Background(), 
-	// 用户消息
+    // User message
     []schema.Message
     {
         {
             Type:     schema.MsgTypeMsg,
-            Content:  "写一个终端版本的贪吃蛇",
+            Content:  "Write a terminal version of Snake",
             Sender:   "User",
             Receiver: "engineer",
         },
     }, 
-	// 基座模型参数
+    // Base model parameters
     llm.WithTemperature(0.1)
 )
 
-// 打印Agent的回复
+// Print the Agent's response
 fmt.Println(gen.Messages[0].Content)
 ```
 
@@ -111,19 +118,19 @@ In multi-agent systems, this module is primarily used to store information such 
 Below is the interface definition of the Env module:
 ```go
 type Environment interface {
-	// Produce 生产消息
+	// Produce produces messages
 	Produce(ctx context.Context, msgs ...Message) error
-	// Consume 消费消息
+	// Consume consumes messages
 	Consume(ctx context.Context) *Message
-	// SOP 获取任务的SopGraph
+	// SOP gets the SopGraph of the task
 	SOP() string
-	// GetTeam 获取团队里面的所有Agent
+	// GetTeam gets all Agents in the team
 	GetTeam() []Agent
-	// GetTeamLeader 获取团队Leader
+	// GetTeamLeader gets the team leader
 	GetTeamLeader() Agent
-	// LoadMemory 获取Agent的历史消息
+	// LoadMemory retrieves the historical messages of an Agent
 	LoadMemory(ctx context.Context, receiver Agent) []Message
-	// GetSubscribeAgents 获取某个Agent的订阅者
+	// GetSubscribeAgents gets the subscribers of a specific Agent
 	GetSubscribeAgents(_ context.Context, subscribed Agent) []Agent
 }
 ```
@@ -135,25 +142,25 @@ Since we mentioned that Env is the message relay pool, let's delve into the deta
 Below is the structure definition of Message:
 ```go
 type Message struct {
-	// 消息类型
+	// Message type
 	Type      string       `json:"cate"`
-	// 产出该消息的思考过程
+	// Thought process that produced the message
 	Thought   string       `json:"thought"`
-	// 消息内容
+	// Message content
 	Content   string       `json:"content"`
-	// 发送方
+	// Sender
 	Sender    string       `json:"sender"`
-	// 接收方
+	// Receiver
 	Receiver  string       `json:"receiver"`
-	// 接受条件
+	// Acceptance condition
 	Condition string       `json:"condition"`
-	// 生成该消息过程中的工具调用记录
+	// Tool invocation records during the generation of this message
 	Steps     []StepAction `json:"steps"`
-	// 相关日志存储
+	// Related log storage
 	Log       string
-	// 控制信息，用于剔除和更新Agent
+	// Control information, used for removing and updating Agents
     MngInfo   *MngInfo
-	// 所有的可以接收该消息的Agent
+	// All Agents that can receive this message
 	AllReceiver []string
 }
 ```
@@ -204,23 +211,23 @@ type Feedback interface {
 Below is the structure definition of FeedbackInfo:
 ```go
 type FeedbackInfo struct {
-	// 反馈类型: 通过/不通过
+	// Feedback type: Pass/Fail
 	Type  FeedbackType `json:"type"`
-	// 反馈建议
+	// Feedback suggestion
 	Msg   string       `json:"msg"`
-	// 消耗的Token
+	// Tokens consumed
 	Token int          `json:"token"`
 }
 ```
 
 Multiple Feedbacks can form a FeedbackChain as follows:
 ```go
-// feedbackChain Define a struct contains slice of Feedback
+// feedbackChain defines a struct containing a slice of Feedback
 type feedbackChain struct {
 	chains []Feedback
 }
 
-// Feedback Implement the Feedback method for the feedbackChain
+// Feedback implements the Feedback method for the feedbackChain
 func (fc *feedbackChain) Feedback(ctx context.Context, agent schema.Agent, messages []schema.Message, actions []schema.StepAction,
 	steps []schema.StepAction, prompt string) *FeedbackInfo {
 
@@ -241,7 +248,7 @@ func (fc *feedbackChain) Feedback(ctx context.Context, agent schema.Agent, messa
 	return info
 }
 
-// Chain function to create a new Feedback that chains multiple Feedback
+// Chain function creates a new Feedback that chains multiple Feedback
 func Chain(chains ...Feedback) Feedback {
 	return &feedbackChain{chains: chains}
 }
@@ -287,7 +294,7 @@ The operation process of the watcher is as follows:
        if msg.MngInfo == nil {
            return nil
        }
-       // 当前仅支持移除
+       // Currently only removal is supported
        if msg.MngInfo.Remove != nil {
            e.Team.RemoveMembers(msg.MngInfo.Remove)
        }
@@ -314,26 +321,26 @@ The scheduling logic is as follows:
 
 ```go
 func (e *AIEvo) Scheduler(ctx context.Context, prompt string, opts ...llm.GenerateOption) (string, error) {
-	// 首先由用户消息进行驱动
+	// First, driven by the user's message
 	e.Produce(ctx, schema.Message{
 		Type:     schema.MsgTypeMsg,
 		Content:  prompt,
 		Sender:   _defaultSender,
 		Receiver: e.Leader.Name(),
 	})
-	// 循环从Env中消费消息，直到消息为空
+	// Continuously consume messages from the Env until the message is empty
 	for msg := e.Consume(ctx); msg != nil; msg = e.Consume(ctx) {
 		if msg.IsEnd() {
 			return msg.Content, nil
 		}
-		// 获取消息的接受者
+		// Get the receivers of the message
 		receivers := msg.Receivers()
 		for _, rec := range receivers {
 			receiver := e.Agent(rec)
 			if receiver == nil {
 				if len(receivers) == 1 {
 					return msg.Content, fmt.Errorf(
-						"get unexcept agent %s", msg.Receiver)
+						"get unexpected agent %s", msg.Receiver)
 				}
 				continue
 			}
@@ -341,7 +348,7 @@ func (e *AIEvo) Scheduler(ctx context.Context, prompt string, opts ...llm.Genera
 			if e.Callback != nil {
 				e.Callback.HandleAgentStart(ctx, receiver, messages)
 			}
-			// 调度对应的Agent运行
+			// Schedule the corresponding Agent to run
 			gen, err := receiver.Run(ctx, messages, opts...)
 			if err != nil {
 				return "", err
@@ -354,7 +361,7 @@ func (e *AIEvo) Scheduler(ctx context.Context, prompt string, opts ...llm.Genera
 				return "", fmt.Errorf("gen messages is nil for agent %s", msg.Receiver)
 			}
 
-			// 将消息投递到Env中
+			// Deliver the messages to the Env
 			e.Produce(ctx, gen.Messages...)
 			e.broadcast(gen.Messages...)
 		}
