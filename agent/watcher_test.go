@@ -10,7 +10,7 @@ import (
 
 func TestWatcher(t *testing.T) {
 
-	watcher, err := NewWatcherAgent(WithLLM(client),
+	watcher, err := NewWatcherAgent(WithLLM(client()),
 		WithPrompt(`You are now in the Werewolf game. Your goal is to sort out which player is out at the end of each round of the game and eliminate this player from the game.`),
 		WithInstruction(`
 Survival players in the game:

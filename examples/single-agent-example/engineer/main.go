@@ -49,7 +49,7 @@ func main() {
 		agent.WithCallback(callbackHandler),
 	)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	gen, err := engineer.Run(context.Background(), []schema.Message{
@@ -61,7 +61,7 @@ func main() {
 		},
 	}, llm.WithTemperature(0.1))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	fmt.Println(gen.Messages[0].Content)
 }
