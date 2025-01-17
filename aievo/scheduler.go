@@ -1,0 +1,113 @@
+package aievo
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/antgroup/aievo/llm"
+	"github.com/antgroup/aievo/schema"
+)
+
+func (e *AIEvo) BuildPlan(_ context.Context, _ string, _ ...llm.GenerateOption) (string, error) {
+	// 预留，根据LLM自定义 team成员
+	err := e.Team.InitSubRelation()
+	return "", err
+}
+
+func (e *AIEvo) BuildSOP(ctx context.Context, prompt string, opts ...llm.GenerateOption) (string, error) {
+	if e.SOP() == "" && e.SopExpert != nil {
+		// 执行 sop agent 获取sop
+		gen, err := e.SopExpert.Run(ctx, []schema.Message{{
+			Type:     schema.MsgTypeMsg,
+			Content:  prompt,
+			Sender:   _defaultSender,
+			Receiver: e.SopExpert.Name(),
+		}}, opts...)
+		if err != nil {
+			return "", err
+		}
+
+		// 更新cost
+		_ = e.Produce(ctx, gen.Messages...)
+	}
+
+	return "", nil
+}
+
+func (e *AIEvo) Watch(ctx context.Context, _ string, opts ...llm.GenerateOption) (string, error) {
+	// 开启一个 watcher 观察所有的执行流程，并给出评判建议，用于剔除和更新agent
+	if e.Watcher != nil {
+		e.WatchChan = make(chan schema.Message)
+		e.WatchChanDone = make(chan struct{})
+		go func() {
+			for message := range e.WatchChan {
+				if e.WatchCondition != nil && !e.WatchCondition(message) {
+					e.WatchChanDone <- struct{}{}
+					continue
+				}
+				generation, err := e.Watcher.Run(ctx,
+					e.LoadMemory(ctx, e.Watcher), opts...)
+				e.WatchChanDone <- struct{}{}
+				if err != nil {
+					continue
+				}
+				_ = e.Produce(ctx, generation.Messages...)
+			}
+		}()
+	}
+	return "", nil
+}
+
+func (e *AIEvo) Scheduler(ctx context.Context, prompt string, opts ...llm.GenerateOption) (string, error) {
+	_ = e.Produce(ctx, schema.Message{
+		Type:     schema.MsgTypeMsg,
+		Content:  prompt,
+		Sender:   _defaultSender,
+		Receiver: e.GetTeamLeader().Name(),
+	})
+	for msg := e.Consume(ctx); msg != nil; msg = e.Consume(ctx) {
+		if msg.IsEnd() {
+			return msg.Content, nil
+		}
+		receivers := msg.Receivers()
+		for _, rec := range receivers {
+			receiver := e.Agent(rec)
+			if receiver == nil {
+				if len(receivers) == 1 {
+					return msg.Content, fmt.Errorf(
+						"get unexcept agent %s", msg.Receiver)
+				}
+				continue
+			}
+			messages := e.LoadMemory(ctx, receiver)
+			if e.Callback != nil {
+				e.Callback.HandleAgentStart(ctx, receiver, messages)
+			}
+			gen, err := receiver.Run(ctx, messages, opts...)
+			if err != nil {
+				return "", err
+			}
+			if e.Callback != nil {
+				e.Callback.HandleAgentEnd(ctx, receiver, gen)
+			}
+
+			if gen.Messages == nil {
+				return "", fmt.Errorf("gen messages is nil for agent %s", msg.Receiver)
+			}
+
+			_ = e.Produce(ctx, gen.Messages...)
+			e.broadcast(gen.Messages...)
+		}
+	}
+	return "", nil
+}
+
+func (e *AIEvo) broadcast(messages ...schema.Message) {
+	if e.WatchChan == nil {
+		return
+	}
+	for _, message := range messages {
+		e.WatchChan <- message
+		<-e.WatchChanDone
+	}
+}
