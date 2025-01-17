@@ -364,12 +364,19 @@ func (e *AIEvo) Scheduler(ctx context.Context, prompt string, opts ...llm.Genera
 ```
 
 ## Communication
+<table>
+  <tr>
+    <td>
+      DingTalk Group:<br>
+      <img src="docs/static/qr.png" alt="DingTalk QR Code" style="width: 150px; height: 150px;">
+    </td>
+    <td>
+      WeChat Official Account:<br>
+      <img src="docs/static/account.jpg" alt="WeChat QR Code" style="width: 150px; height: 150px;">
+    </td>
+  </tr>
+</table>
 
-- DingTalk Group:
-
-  ![](docs/static/qr.png)
-
-- WeChat Official Account: AIEvo多智能体
 
 ## License
 
