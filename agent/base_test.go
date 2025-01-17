@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/antgroup/aievo/feedback"
@@ -14,15 +16,20 @@ import (
 	"github.com/goccy/go-graphviz"
 )
 
-var (
-	client, _ = openai.New(openai.WithToken("token"),
-		openai.WithModel("auto"),
-		openai.WithBaseURL("https://mmcv.alipay.com/api/v1/agent/ant"))
-)
+func client() llm.LLM {
+	c, err := openai.New(
+		openai.WithToken(os.Getenv("OPENAI_API_KEY")),
+		openai.WithModel(os.Getenv("OPENAI_MODEL")),
+		openai.WithBaseURL(os.Getenv("OPENAI_BASE_URL")))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return c
+}
 
 func TestBaseAgent(t *testing.T) {
 	base, err := NewBaseAgent(
-		WithLLM(client),
+		WithLLM(client()),
 		WithName("test"),
 		WithDesc("test"),
 		WithTools([]tool.Tool{
@@ -30,7 +37,7 @@ func TestBaseAgent(t *testing.T) {
 		}),
 		WithFeedbacks(&feedback.ContentFeedback{}))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	run, err := base.Run(context.Background(), []schema.Message{
 		{
@@ -45,23 +52,14 @@ func TestBaseAgent(t *testing.T) {
 		llm.WithRepetitionPenalty(1.05),
 	)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	fmt.Printf("%+v\n", run)
 }
 
 func TestConversationAgent(t *testing.T) {
-	llm, err := openai.New(
-		openai.WithModel("auto"),
-		openai.WithToken("12345"),
-		openai.WithBaseURL("https://mmcv.alipay.com/api/v1/agent"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	base, err := NewBaseAgent(
-		WithLLM(llm),
+		WithLLM(client()),
 		WithName("test"),
 		WithDesc("test"))
 	if err != nil {
@@ -90,7 +88,7 @@ func TestConversationAgent(t *testing.T) {
 			},
 		})
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	fmt.Printf("%+v\n", run.Messages[0])
 }

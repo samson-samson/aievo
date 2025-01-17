@@ -11,8 +11,8 @@ import (
 
 func TestSOP(t *testing.T) {
 
-	sopFeedback, _ := feedback.NewSopFeedback(client)
-	sop, err := NewSopAgent(WithLLM(client),
+	sopFeedback, _ := feedback.NewSopFeedback(client())
+	sop, err := NewSopAgent(WithLLM(client()),
 		// agent.WithTools([]tool.Tool{sr}),
 		WithEnv(environment.NewEnv()),
 		WithFeedbacks(sopFeedback))
