@@ -18,9 +18,11 @@ AIEVO is a **multi-agent** framework open-sourced by **Ant Group**, designed to 
 
 ### Multi-Agent Examples
 
-- [Debate Competition](/examples/multi-agent-example/battle): Multiple agents engage in a debate competition.
+- [Debate Competition With Custom SOP](/examples/multi-agent-example/battle-with-customer-sop): Multiple agents engage in a debate competition with custom sop.
+- [Debate Competition With Auto SOP](/examples/multi-agent-example/battle-with-auto-sop): Multiple agents engage in a debate competition with sop defined by sop agent.
 - [Werewolf Game](/examples/multi-agent-example/werewolf): Multiple agents play a game of Werewolf.
-- [Undercover Game](/examples/multi-agent-example/undercover): Multiple agents play a game of Undercover.
+- [Undercover Game With Custom SOP](/examples/multi-agent-example/undercover-with-custom-sop): Multiple agents play a game of Undercover with custom sop.
+- [Undercover Game With Auto SOP](/examples/multi-agent-example/undercover-with-auto-sop): Multiple agents play a game of Undercover with sop defined by sop agent.
 - [Paper Writing](/examples/multi-agent-example/paper_write): Multiple agents collaborate to write a paper.
 
 ### Single-Agent Examples
