@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/antgroup/aievo/feedback"
@@ -15,9 +16,10 @@ import (
 )
 
 var (
-	client, _ = openai.New(openai.WithToken("token"),
-		openai.WithModel("auto"),
-		openai.WithBaseURL("https://mmcv.alipay.com/api/v1/agent/ant"))
+	client, _ = openai.New(
+		openai.WithToken(os.Getenv("OPENAI_API_KEY")),
+		openai.WithModel(os.Getenv("OPENAI_MODEL")),
+		openai.WithBaseURL(os.Getenv("OPENAI_BASE_URL")))
 )
 
 func TestBaseAgent(t *testing.T) {
@@ -51,17 +53,8 @@ func TestBaseAgent(t *testing.T) {
 }
 
 func TestConversationAgent(t *testing.T) {
-	llm, err := openai.New(
-		openai.WithModel("auto"),
-		openai.WithToken("12345"),
-		openai.WithBaseURL("https://mmcv.alipay.com/api/v1/agent"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
 	base, err := NewBaseAgent(
-		WithLLM(llm),
+		WithLLM(client),
 		WithName("test"),
 		WithDesc("test"))
 	if err != nil {

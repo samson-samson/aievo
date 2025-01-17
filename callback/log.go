@@ -57,7 +57,9 @@ func (LogHandler) HandleMessageInQueue(ctx context.Context, message *schema.Mess
 		fmt.Printf("Final Answer: %s\n", message.Content)
 		return
 	}
-	fmt.Printf("(%s -> %s)(%s): %s\n", message.Sender, message.Receiver, message.Condition, message.Content)
+	if message.IsMsg() {
+		fmt.Printf("(%s -> %s)(%s): %s\n", message.Sender, message.Receiver, message.Condition, message.Content)
+	}
 }
 
 func (LogHandler) HandleMessageOutQueue(ctx context.Context, message *schema.Message) {
