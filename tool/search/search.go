@@ -17,6 +17,7 @@ const (
 var searchEngines = map[string]Factory{
 	"google": NewGoogleSearch,
 	"bing":   NewBingSearch,
+	"baidu":  NewBaiduSearch,
 }
 
 type Tool struct {

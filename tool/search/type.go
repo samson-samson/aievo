@@ -75,3 +75,22 @@ type BingData struct {
 	Snippet        string `json:"snippet"`
 	CachedPageLink string `json:"cached_page_link"`
 }
+
+// BaiduData Baidu Response struct
+// refer to https://serpapi.com/baidu-search-api
+type BaiduData struct {
+	Position       int    `json:"position"`
+	Title          string `json:"title"`
+	Link           string `json:"link"`
+	Thumbnail      string `json:"thumbnail"`
+	DisplayedBrand string `json:"displayed_brand"`
+	RichSnippet    []struct {
+		Extensions         []string          `json:"extensions"`
+		DetectedExtensions map[string]string `json:"detected_extensions"`
+	} `json:"rich_snippet"`
+	Sitelinks []struct {
+		Title string `json:"title"`
+		Link  string `json:"link"`
+	} `json:"sitelinks"`
+	Snippet string `json:"snippet"`
+}
