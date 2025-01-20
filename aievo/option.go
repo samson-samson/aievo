@@ -14,6 +14,11 @@ var (
 	ErrMissTeam      = errors.New("team is not set")
 )
 
+const (
+	_defaultMaxTurn  = 20
+	_defaultMaxToken = 20 * 4096
+)
+
 type options struct {
 	team           []schema.Agent
 	leader         schema.Agent
