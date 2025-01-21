@@ -25,11 +25,12 @@ type Options struct {
 
 	LLM              llm.LLM
 	Tools            []tool.Tool
+	useFunctionCall  bool
 	FeedbackChain    feedback.Feedback
 	Env              schema.Environment
 	Callback         callback.Handler
 	FilterMemoryFunc func([]schema.Message) []schema.Message
-	ParseOutputFunc  func(string, string) ([]schema.StepAction, []schema.Message, error)
+	ParseOutputFunc  func(string, *llm.Generation) ([]schema.StepAction, []schema.Message, error)
 	Vars             map[string]string
 
 	MaxIterations int
@@ -83,6 +84,12 @@ func WithTools(actions []tool.Tool) Option {
 	}
 }
 
+func WithUseFunctionCall(useFunctionCall bool) Option {
+	return func(opt *Options) {
+		opt.useFunctionCall = useFunctionCall
+	}
+}
+
 func WithFeedbacks(feedbacks ...feedback.Feedback) Option {
 	return func(opt *Options) {
 		opt.FeedbackChain = feedback.Chain(feedbacks...)
@@ -122,7 +129,7 @@ func WithFilterMemoryFunc(fun func([]schema.Message) []schema.Message) Option {
 	}
 }
 
-func WithParseOutputFunc(fun func(string, string) ([]schema.StepAction, []schema.Message, error)) Option {
+func WithParseOutputFunc(fun func(string, *llm.Generation) ([]schema.StepAction, []schema.Message, error)) Option {
 	return func(opt *Options) {
 		opt.ParseOutputFunc = fun
 	}

@@ -1,9 +1,9 @@
 package agent
 
 import (
-	"regexp"
 	"strings"
 
+	"github.com/antgroup/aievo/llm"
 	"github.com/antgroup/aievo/schema"
 	"github.com/antgroup/aievo/utils/json"
 )
@@ -14,28 +14,32 @@ func NewWatcherAgent(opts ...Option) (schema.Agent, error) {
 	return NewBaseAgent(opts...)
 }
 
-func parseMngInfoOutput(_, content string) ([]schema.StepAction, []schema.Message, error) {
-	content = strings.TrimSpace(content)
-	compile := regexp.MustCompile(_jsonParse)
-	submatch := compile.FindAllStringSubmatch(content, -1)
-	if len(submatch) != 0 {
-		content = submatch[0][1]
+func parseMngInfoOutput(_ string, output *llm.Generation) ([]schema.StepAction, []schema.Message, error) {
+	if len(output.ToolCalls) > 0 {
+		return parseToolCalls(output.ToolCalls), nil, nil
 	}
-
-	// parse action
-	action := schema.StepAction{}
-	err := json.Unmarshal([]byte(content), &action)
+	content := extractJSONContent(strings.TrimSpace(output.Content))
+	action, err := parseAction(content)
 	if err != nil {
 		return nil, nil, err
 	}
-	if action.Action != "" {
-		return []schema.StepAction{action}, nil, nil
+	if action != nil {
+		return []schema.StepAction{*action}, nil, nil
 	}
+	message, err := parseMngInfoMessage(content)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, []schema.Message{*message}, nil
+}
 
+func parseMngInfoMessage(content string) (*schema.Message, error) {
 	finish := schema.Message{
 		Type:    schema.MsgTypeCreative,
 		MngInfo: &schema.MngInfo{},
 	}
-	err = json.Unmarshal([]byte(content), finish.MngInfo)
-	return nil, []schema.Message{finish}, err
+	if err := json.Unmarshal([]byte(content), finish.MngInfo); err != nil {
+		return nil, err
+	}
+	return &finish, nil
 }

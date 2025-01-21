@@ -30,15 +30,16 @@ type BaseAgent struct {
 
 	llm llm.LLM
 	// tools is a list of the action the agent can do.
-	tools []tool.Tool
-	env   schema.Environment
+	tools           []tool.Tool
+	useFunctionCall bool
+	env             schema.Environment
 
-	fdchain  feedback.Feedback
+	fdChain  feedback.Feedback
 	callback callback.Handler
 	prompt   prompt.Template
 
 	filterMemoryFunc func([]schema.Message) []schema.Message
-	parseOutputFunc  func(string, string) ([]schema.StepAction, []schema.Message, error)
+	parseOutputFunc  func(string, *llm.Generation) ([]schema.StepAction, []schema.Message, error)
 
 	MaxIterations int
 	vars          map[string]string
@@ -76,11 +77,12 @@ func NewBaseAgent(opts ...Option) (*BaseAgent, error) {
 		desc: options.desc,
 		role: options.role,
 
-		llm:      options.LLM,
-		env:      options.Env,
-		tools:    options.Tools,
-		fdchain:  options.FeedbackChain,
-		callback: options.Callback,
+		llm:             options.LLM,
+		env:             options.Env,
+		tools:           options.Tools,
+		useFunctionCall: options.useFunctionCall,
+		fdChain:         options.FeedbackChain,
+		callback:        options.Callback,
 
 		MaxIterations:    options.MaxIterations,
 		filterMemoryFunc: options.FilterMemoryFunc,
@@ -154,13 +156,18 @@ func (ba *BaseAgent) Plan(ctx context.Context, messages []schema.Message,
 		inputs[key] = value
 	}
 
+	if ba.useFunctionCall {
+		opts = append(opts, llm.WithTools(ConvertToolToFunctionDefinition(ba.Tools())))
+	} else {
+		inputs["tool_names"] = schema.ConvertToolNames(ba.tools)
+		inputs["tool_descriptions"] = schema.ConvertToolDescriptions(ba.tools)
+	}
+
 	inputs["name"] = ba.name
 	inputs["role"] = ba.role
-	inputs["tool_names"] = schema.ConvertToolNames(ba.tools)
-	inputs["tool_descriptions"] = schema.ConvertToolDescriptions(ba.tools)
-	inputs["history"] = schema.ConvertConstructScratchPad(ba.name,
-		"me", messages, steps)
+	inputs["history"] = schema.ConvertConstructScratchPad(ba.name, "me", messages, steps)
 	inputs["current"] = time.Now().Format("2006-01-02 15:04:05")
+
 	if ba.env != nil {
 		inputs["agent_names"] = schema.ConvertAgentNames(ba.env.GetSubscribeAgents(ctx, ba))
 		inputs["agent_descriptions"] = schema.ConvertAgentDescriptions(ba.env.GetSubscribeAgents(ctx, ba))
@@ -177,7 +184,7 @@ func (ba *BaseAgent) Plan(ctx context.Context, messages []schema.Message,
 		opts = append(opts, llm.WithStreamingFunc(
 			ba.callback.HandleStreamingFunc))
 	}
-	// opts = append(opts, llm.WithTools(action2Tool(ba.Tools)))
+
 	output, err := ba.llm.Generate(ctx, p, opts...)
 	if err != nil {
 		return nil, nil, nil, 0, err
@@ -185,8 +192,9 @@ func (ba *BaseAgent) Plan(ctx context.Context, messages []schema.Message,
 	if ba.callback != nil {
 		ba.callback.HandleLLMEnd(ctx, output)
 	}
+
 	feedbacks := make([]schema.StepFeedback, 0)
-	actions, content, err := ba.parseOutputFunc(ba.name, output.Content)
+	actions, content, err := ba.parseOutputFunc(ba.name, output)
 	if err != nil {
 		feedbacks = append(feedbacks, schema.StepFeedback{
 			Feedback: "parse output failed with error: " + err.Error(),
@@ -194,7 +202,7 @@ func (ba *BaseAgent) Plan(ctx context.Context, messages []schema.Message,
 		})
 		return feedbacks, actions, content, output.Usage.TotalTokens, nil
 	}
-	fd := ba.fdchain.Feedback(ctx, ba, content, actions, steps, p)
+	fd := ba.fdChain.Feedback(ctx, ba, content, actions, steps, p)
 	if fd.Type == feedback.NotApproved {
 		feedbacks = append(feedbacks, schema.StepFeedback{
 			Feedback: fd.Msg,
@@ -241,37 +249,88 @@ func (ba *BaseAgent) getAction(name string) tool.Tool {
 	return nil
 }
 
-func parseOutput(name string, content string) ([]schema.StepAction, []schema.Message, error) {
-	content = strings.TrimSpace(content)
+func ConvertToolToFunctionDefinition(tools []tool.Tool) []llm.Tool {
+	convertedTools := make([]llm.Tool, 0)
+	for _, t := range tools {
+		functionDefinition := &llm.FunctionDefinition{
+			Name:        t.Name(),
+			Description: t.Description(),
+			Parameters:  t.Schema(),
+			Strict:      t.Strict(),
+		}
+
+		convertedTool := &llm.Tool{
+			Type:     "function",
+			Function: functionDefinition,
+		}
+		convertedTools = append(convertedTools, *convertedTool)
+	}
+	return convertedTools
+}
+
+func parseOutput(name string, output *llm.Generation) ([]schema.StepAction, []schema.Message, error) {
+	if len(output.ToolCalls) > 0 {
+		return parseToolCalls(output.ToolCalls), nil, nil
+	}
+	content := strings.TrimSpace(output.Content)
 	if content == "" {
 		return nil, nil, errors.New("content is empty")
 	}
-	compile := regexp.MustCompile(_jsonParse)
-	submatch := compile.FindAllStringSubmatch(content, -1)
-	if len(submatch) != 0 {
-		content = strings.TrimSpace(submatch[0][1])
-	}
-	// parse action
-	action := &schema.StepAction{
-		Log: content,
-	}
-	err := json.Unmarshal([]byte(content), &action)
+	content = extractJSONContent(content)
+	action, err := parseAction(content)
 	if err != nil {
 		return nil, nil, err
 	}
-	if action.Action != "" {
+	if action != nil {
 		return []schema.StepAction{*action}, nil, nil
 	}
-
-	finish := schema.Message{
-		Log:    content,
-		Sender: name,
-	}
-	err = json.Unmarshal([]byte(content), &finish)
+	message, err := parseMessage(name, content)
 	if err != nil {
 		return nil, nil, err
 	}
-	return nil, []schema.Message{finish}, nil
+	return nil, []schema.Message{*message}, nil
+}
+
+func parseToolCalls(toolCalls []llm.ToolCall) []schema.StepAction {
+	actions := make([]schema.StepAction, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		logBytes, _ := json.Marshal(toolCall)
+		action := schema.StepAction{
+			Action: toolCall.Function.Name,
+			Input:  toolCall.Function.Arguments,
+			Log:    string(logBytes),
+		}
+		actions = append(actions, action)
+	}
+	return actions
+}
+
+func extractJSONContent(content string) string {
+	compile := regexp.MustCompile(_jsonParse)
+	submatch := compile.FindAllStringSubmatch(content, -1)
+	if len(submatch) > 0 {
+		return strings.TrimSpace(submatch[0][1])
+	}
+	return content
+}
+
+func parseAction(content string) (*schema.StepAction, error) {
+	action := &schema.StepAction{Log: content}
+	if err := json.Unmarshal([]byte(content), action); err != nil {
+		return nil, err
+	}
+	if action.Action != "" {
+		return action, nil
+	}
+	return nil, nil
+}
+
+func parseMessage(name, content string) (*schema.Message, error) {
+	message := &schema.Message{Log: content, Sender: name}
+	if err := json.Unmarshal([]byte(content), message); err != nil {
+		return nil, err
+	}
+	return message, nil
 }
 
 func (ba *BaseAgent) Name() string {

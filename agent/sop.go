@@ -2,11 +2,12 @@ package agent
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
+	"github.com/antgroup/aievo/llm"
 	"github.com/antgroup/aievo/schema"
-	"github.com/antgroup/aievo/utils/json"
 	"github.com/goccy/go-graphviz"
 )
 
@@ -20,38 +21,45 @@ func NewSopAgent(opts ...Option) (schema.Agent, error) {
 	return NewBaseAgent(opts...)
 }
 
-func parseSopOutput(_, content string) ([]schema.StepAction, []schema.Message, error) {
-	content = strings.TrimSpace(content)
+func parseSopOutput(_ string, output *llm.Generation) ([]schema.StepAction, []schema.Message, error) {
+	if len(output.ToolCalls) > 0 {
+		return parseToolCalls(output.ToolCalls), nil, nil
+	}
+	content := strings.TrimSpace(output.Content)
 	if content == "" {
 		return nil, nil, errors.New("content is empty")
 	}
-	compile := regexp.MustCompile(_jsonParse)
-	submatch := compile.FindAllStringSubmatch(content, -1)
-	if len(submatch) != 0 {
-		content = strings.TrimSpace(submatch[0][1])
-	}
-	submatch = _dotParse.FindAllStringSubmatch(content, -1)
-	dot := content
-	if len(submatch) != 0 {
-		dot = strings.TrimSpace(submatch[0][1])
-	}
-
-	// parse action
-	action := &schema.StepAction{}
-	err := json.Unmarshal([]byte(dot), &action)
-	if err == nil && action.Action != "" {
+	jsonContent := extractJSONContent(content)
+	dotContent := extractDOTContent(jsonContent)
+	action, err := parseAction(dotContent)
+	if err == nil && action != nil {
 		return []schema.StepAction{*action}, nil, nil
 	}
-
-	if _, err = graphviz.ParseBytes([]byte(dot)); err != nil {
-		return nil, nil, errors.New("parse sop to dot graph failed, err: " + err.Error())
+	if err := validateDOT(dotContent); err != nil {
+		return nil, nil, fmt.Errorf("parse sop to dot graph failed, err: %w", err)
 	}
+	message := createSOPMessage(jsonContent, dotContent)
+	return nil, []schema.Message{message}, nil
+}
 
-	finish := schema.Message{
+func extractDOTContent(content string) string {
+	submatch := _dotParse.FindAllStringSubmatch(content, -1)
+	if len(submatch) > 0 {
+		return strings.TrimSpace(submatch[0][1])
+	}
+	return content
+}
+
+func validateDOT(dotContent string) error {
+	_, err := graphviz.ParseBytes([]byte(dotContent))
+	return err
+}
+
+func createSOPMessage(jsonContent, dotContent string) schema.Message {
+	return schema.Message{
 		Type:    schema.MsgTypeSOP,
-		Content: dot,
-		Thought: content,
-		Log:     content,
+		Content: dotContent,
+		Thought: jsonContent,
+		Log:     jsonContent,
 	}
-	return nil, []schema.Message{finish}, nil
 }
