@@ -341,7 +341,9 @@ func (ba *BaseAgent) Description() string {
 	return ba.desc
 }
 
-func (ba *BaseAgent) WithEnv(env schema.Environment) { ba.env = env }
+func (ba *BaseAgent) WithEnv(env schema.Environment) {
+	ba.env = env
+}
 
 func (ba *BaseAgent) Env() schema.Environment {
 	return ba.env
